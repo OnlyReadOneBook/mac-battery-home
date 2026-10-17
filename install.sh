@@ -9,7 +9,14 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 CONFIG="$HOME/.config/battery-home/config"
 
 mkdir -p "$HOME/bin" "$(dirname "$CONFIG")"
+python_bin="${PYTHON_BIN:-$(command -v python3)}"
+[[ -x "$python_bin" ]] || { echo "Python 3.11+ is required"; exit 1; }
+"$python_bin" -c 'import sys; assert sys.version_info >= (3, 11)'
+"$python_bin" -m venv "$HOME/.config/battery-home/venv"
+"$HOME/.config/battery-home/venv/bin/pip" install -r requirements.txt
+install -m 755 calendar-plan.py "$HOME/bin/calendar-plan.py"
 install -m 755 battery-home.sh "$HOME/bin/battery-home.sh"
+mkdir -p "$HOME/Library/Logs/battery-home"
 
 if [[ ! -f "$CONFIG" ]]; then
   gw=$(ipconfig getoption en0 router 2>/dev/null || true)
@@ -30,6 +37,8 @@ cat > "$PLIST" <<EOF
   </array>
   <key>StartInterval</key><integer>60</integer>
   <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/battery-home/ticks.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/battery-home/errors.log</string>
 </dict>
 </plist>
 EOF
