@@ -22,32 +22,16 @@ set_limit() {
   open -g "aldente://limit/$1"
 }
 
-# AlDente has no discharge URL; press the popover's Discharge button through accessibility.
+# AlDente has no discharge URL; an applet presses the popover's Discharge button.
+# It is a separate app so the Accessibility grant is scoped to it.
+DISCHARGE_APP="${DISCHARGE_APP:-$HOME/Applications/BatteryHomeDischarge.app}"
 start_discharge() {
   set_limit "$HOME_LIMIT"
   sleep 2
-  osascript <<'EOF'
-tell application "System Events"
-  tell process "AlDente"
-    if (count of windows) = 0 then
-      perform action "AXPress" of menu bar item 1 of menu bar 2
-      delay 2
-    end if
-    set pressed to false
-    repeat with b in (buttons of UI element 1 of window 1)
-      try
-        if (value of attribute "AXHelp" of b) starts with "Discharges" then
-          perform action "AXPress" of b
-          set pressed to true
-          exit repeat
-        end if
-      end try
-    end repeat
-    key code 53
-    if not pressed then error "AlDente Discharge button not found"
-  end tell
-end tell
-EOF
+  open -g -W "$DISCHARGE_APP"
+  sleep 5
+  # Fails the tick (state unchanged) so the next tick retries when the press did not take.
+  pmset -g batt | /usr/bin/grep -q 'discharging'
 }
 
 gw=$(ipconfig getoption en0 router 2>/dev/null || true)

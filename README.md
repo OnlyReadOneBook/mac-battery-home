@@ -16,7 +16,7 @@
 
 ## 설치
 
-Python 3.11+, AlDente가 필요하다. 방전은 AlDente 팝오버의 Discharge 버튼을 손쉬운 사용(System Events)으로 눌러 시작하므로, LaunchAgent를 실행하는 쪽에 손쉬운 사용 권한이 있어야 한다. battery CLI는 macOS 27에서 SMC 키를 찾지 못해 더 이상 쓰지 않는다. 일반 설치는 관리자 권한 없이 실행한다.
+Python 3.11+, AlDente가 필요하다. 방전은 AlDente 팝오버의 Discharge 버튼을 누르는 애플릿 `~/Applications/BatteryHomeDischarge.app`(install.sh 가 만든다)으로 시작한다. 이 애플릿을 시스템 설정 > 개인정보 보호 및 보안 > 손쉬운 사용에 추가해야 한다. LaunchAgent 안에서는 osascript 에 준 권한이 통하지 않는다. battery CLI는 macOS 27에서 SMC 키를 찾지 못해 더 이상 쓰지 않는다. 일반 설치는 관리자 권한 없이 실행한다.
 
 ```sh
 ./install.sh
