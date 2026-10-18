@@ -17,7 +17,8 @@ python_bin="${PYTHON_BIN:-$(command -v python3)}"
 install -m 755 calendar-plan.py "$HOME/bin/calendar-plan.py"
 install -m 755 battery-home.sh "$HOME/bin/battery-home.sh"
 mkdir -p "$HOME/Applications"
-osacompile -o "$HOME/Applications/BatteryHomeDischarge.app" aldente-discharge.applescript
+# Ad-hoc signed: rebuilding changes the hash and voids the Accessibility grant, so build once.
+[[ -d "$HOME/Applications/BatteryHomeDischarge.app" ]] || osacompile -o "$HOME/Applications/BatteryHomeDischarge.app" aldente-discharge.applescript
 mkdir -p "$HOME/Library/Logs/battery-home"
 
 if [[ ! -f "$CONFIG" ]]; then
