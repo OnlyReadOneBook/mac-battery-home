@@ -27,11 +27,11 @@ set_limit() {
 DISCHARGE_APP="${DISCHARGE_APP:-$HOME/Applications/BatteryHomeDischarge.app}"
 start_discharge() {
   set_limit "$HOME_LIMIT"
+  # The Discharge button toggles, so never press it while a discharge is already running.
+  pmset -g batt | /usr/bin/grep -q 'discharging' && return 0
   sleep 2
+  # Pressed once per transition: retrying every tick toggled a running discharge off again.
   open -g -W "$DISCHARGE_APP"
-  sleep 5
-  # Fails the tick (state unchanged) so the next tick retries when the press did not take.
-  pmset -g batt | /usr/bin/grep -q 'discharging'
 }
 
 gw=$(ipconfig getoption en0 router 2>/dev/null || true)

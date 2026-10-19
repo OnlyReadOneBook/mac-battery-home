@@ -20,7 +20,7 @@ class TickContract(unittest.TestCase):
         self.write_executable('sleep', ':')
         self.write_executable('caffeinate', ':')
         self.write_executable('ipconfig', 'cat "$HOME/gateway"')
-        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; discharging"')
+        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; not charging"')
         self.base.joinpath('config').write_text(f'HOME_GATEWAY="home"\nCAFFEINATE_CLI="{self.bin / "caffeinate"}"\n')
         self.base.joinpath('calendar-url').write_text('synthetic')
         self.base.joinpath('venv/bin').mkdir(parents=True)
@@ -61,6 +61,12 @@ class TickContract(unittest.TestCase):
         r, log, state = self.tick('away', 'home')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('discharge', log)
+        self.assertEqual(state, 'home-discharge')
+
+    def test_running_discharge_is_not_pressed_again(self):
+        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; discharging"')
+        _, log, state = self.tick('prepare', 'home')
+        self.assertNotIn('discharge\n', log)
         self.assertEqual(state, 'home-discharge')
 
     def test_discharge_continues_until_limit(self):
