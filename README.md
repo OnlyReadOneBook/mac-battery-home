@@ -16,7 +16,7 @@
 
 ## 설치
 
-Python 3.11+, AlDente가 필요하다. 방전은 AlDente 팝오버의 Discharge 버튼을 누르는 애플릿 `~/Applications/BatteryHomeDischarge.app`(install.sh 가 만든다)으로 시작한다. 이 애플릿을 시스템 설정 > 개인정보 보호 및 보안 > 손쉬운 사용에 추가해야 한다. LaunchAgent 안에서는 osascript 에 준 권한이 통하지 않는다. battery CLI는 macOS 27에서 SMC 키를 찾지 못해 더 이상 쓰지 않는다. 일반 설치는 관리자 권한 없이 실행한다.
+Python 3.11+, AlDente가 필요하다. 방전은 SMC 키 `CHIE`(08 = 어댑터 끊기, 00 = 다시 연결)를 battery CLI 가 설치한 sudoers 항목으로 직접 써서 한다. AlDente 는 충전 한도만 맡는다. battery CLI 자체는 macOS 27에서 SMC 키를 찾지 못해 쓰지 않지만, 설치는 필요하다(smc 바이너리와 sudoers 항목). 일반 설치는 관리자 권한 없이 실행한다.
 
 ```sh
 ./install.sh

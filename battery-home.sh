@@ -22,22 +22,28 @@ set_limit() {
   open -g "aldente://limit/$1"
 }
 
-# AlDente has no discharge URL; an applet presses the popover's Discharge button.
-# It is a separate app so the Accessibility grant is scoped to it.
-DISCHARGE_APP="${DISCHARGE_APP:-$HOME/Applications/BatteryHomeDischarge.app}"
+# Discharge by cutting the adapter through the SMC CHIE key (08 = adapter off, 00 = on).
+# battery CLI's key detection fails on macOS 27 and AlDente's button is a toggle, but the
+# raw key works through the sudoers entry battery CLI installed.
+SMC="${SMC_CLI:-/usr/local/co.palokaj.battery/smc}"
+SUDO="${SUDO_CLI-sudo -n}"
+adapter() {
+  if [[ "$1" == off ]]; then ${=SUDO} "$SMC" -k CHIE -w 08; else ${=SUDO} "$SMC" -k CHIE -w 00; fi
+}
 start_discharge() {
   set_limit "$HOME_LIMIT"
-  # The Discharge button toggles, so never press it while a discharge is already running.
-  pmset -g batt | /usr/bin/grep -q 'discharging' && return 0
-  sleep 2
-  # Pressed once per transition: retrying every tick toggled a running discharge off again.
-  open -g -W "$DISCHARGE_APP"
+  adapter off
+}
+stop_discharge() {
+  adapter on
 }
 
 gw=$(ipconfig getoption en0 router 2>/dev/null || true)
 if [[ -z "$gw" ]]; then
-  # AlDente stops discharging at the limit by itself, so lost control needs no power restore.
-  [[ "$prev" == "home-discharge" ]] && print -r -- home > "$STATE"
+  if [[ "$prev" == "home-discharge" ]]; then
+    stop_discharge
+    print -r -- home > "$STATE"
+  fi
   exit 0
 fi
 location="away"
@@ -52,7 +58,10 @@ else
   if [[ -f "$BASE/calendar-url" ]]; then
     mode=$("$BASE/venv/bin/python" "$HOME/bin/calendar-plan.py" --mode --commute "$COMMUTE_MINUTES" --lead "$CHARGE_LEAD_MINUTES" --completed-date "$completed" || true)
     if [[ "$mode" == "unknown" || -z "$mode" ]]; then
-      [[ "$prev" == "home-discharge" ]] && print -r -- home > "$STATE"
+      if [[ "$prev" == "home-discharge" ]]; then
+        stop_discharge
+        print -r -- home > "$STATE"
+      fi
       exit 1
     fi
   fi
@@ -60,7 +69,7 @@ fi
 pct=$(pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | head -1 | tr -d '%')
 if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
   if [[ "$prev" != "$mode" ]]; then
-    # Raising the limit also ends any discharge in progress.
+    [[ "$prev" == "home-discharge" ]] && stop_discharge
     set_limit "$AWAY_LIMIT"
     if [[ "$mode" == "prepare" ]]; then
       "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
@@ -69,6 +78,8 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
 elif [[ "$prev" == "home-discharge" ]]; then
   if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
     mode="home-discharge"
+  else
+    stop_discharge
   fi
 elif [[ "$prev" != "home" ]]; then
   # Any arrival at home mode (return from outside or end of a charge window) drains to the home limit.

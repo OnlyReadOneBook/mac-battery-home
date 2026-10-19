@@ -16,12 +16,13 @@ class TickContract(unittest.TestCase):
         self.bin.mkdir()
         self.commands = self.home / 'commands'
         self.commands.write_text('')
-        self.write_executable('open', '[[ "$*" == *Discharge* ]] && echo discharge >> "$HOME/commands" || echo "open $*" >> "$HOME/commands"')
+        self.write_executable('open', 'echo "open $*" >> "$HOME/commands"')
+        self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"')
         self.write_executable('sleep', ':')
         self.write_executable('caffeinate', ':')
         self.write_executable('ipconfig', 'cat "$HOME/gateway"')
         self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; not charging"')
-        self.base.joinpath('config').write_text(f'HOME_GATEWAY="home"\nCAFFEINATE_CLI="{self.bin / "caffeinate"}"\n')
+        self.base.joinpath('config').write_text(f'HOME_GATEWAY="home"\nSUDO_CLI=""\nSMC_CLI="{self.bin / "smc"}"\nCAFFEINATE_CLI="{self.bin / "caffeinate"}"\n')
         self.base.joinpath('calendar-url').write_text('synthetic')
         self.base.joinpath('venv/bin').mkdir(parents=True)
         p = self.base / 'venv/bin/python'
@@ -46,27 +47,21 @@ class TickContract(unittest.TestCase):
     def test_charging_window_interrupts_home_discharge(self):
         r, log, state = self.tick('home-discharge', 'prepare')
         self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('CHIE -w 00', log)
         self.assertIn('aldente://limit/100', log)
-        self.assertNotIn('discharge', log)
         self.assertEqual(state, 'prepare')
 
     def test_end_of_charge_window_drains_to_home_limit(self):
         r, log, state = self.tick('prepare', 'home')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('aldente://limit/50', log)
-        self.assertIn('discharge', log)
+        self.assertIn('CHIE -w 08', log)
         self.assertEqual(state, 'home-discharge')
 
-    def test_return_home_starts_aldente_discharge(self):
+    def test_return_home_cuts_adapter(self):
         r, log, state = self.tick('away', 'home')
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn('discharge', log)
-        self.assertEqual(state, 'home-discharge')
-
-    def test_running_discharge_is_not_pressed_again(self):
-        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; discharging"')
-        _, log, state = self.tick('prepare', 'home')
-        self.assertNotIn('discharge\n', log)
+        self.assertIn('CHIE -w 08', log)
         self.assertEqual(state, 'home-discharge')
 
     def test_discharge_continues_until_limit(self):
@@ -76,14 +71,16 @@ class TickContract(unittest.TestCase):
         self.assertEqual(state, 'home-discharge')
 
     def test_discharge_ends_at_limit(self):
-        self.write_executable('pmset', 'echo " -InternalBattery-0 50%; AC attached; not charging"')
-        _, _, state = self.tick('home-discharge', 'home')
+        self.write_executable('pmset', 'echo " -InternalBattery-0 50%; discharging"')
+        _, log, state = self.tick('home-discharge', 'home')
+        self.assertIn('CHIE -w 00', log)
         self.assertEqual(state, 'home')
 
-    def test_lost_gateway_or_expired_calendar_leaves_discharge_state(self):
+    def test_lost_gateway_or_expired_calendar_restores_power(self):
         for mode, gateway in [('home', ''), ('unknown', 'home')]:
             with self.subTest(mode=mode, gateway=gateway):
-                _, _, state = self.tick('home-discharge', mode, gateway)
+                _, log, state = self.tick('home-discharge', mode, gateway)
+                self.assertIn('CHIE -w 00', log)
                 self.assertEqual(state, 'home')
 
     def test_failed_limit_change_retries_next_tick(self):
