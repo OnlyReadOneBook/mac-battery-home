@@ -114,6 +114,30 @@ class TickContract(unittest.TestCase):
                 self.assertEqual(state, 'prepare')
                 self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '100')
 
+    def test_manual_discharge_is_not_charged(self):
+        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; discharging"')
+        for previous, mode in [('home', 'prepare'), ('prepare', 'away'), ('home', 'away')]:
+            with self.subTest(previous=previous, mode=mode):
+                r, log, state = self.tick(previous, mode)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn('aldente://limit', log)
+                self.assertNotIn('CHIE -w', log)
+                self.assertEqual(state, mode)
+                self.assertIn('manual discharge kept', r.stdout)
+
+    def test_scripted_discharge_yields_to_charge_window(self):
+        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; discharging"')
+        self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"; if [[ "$*" == *-r* ]]; then echo "  CHIE  [hex_]  (bytes 08)"; fi')
+        _, log, state = self.tick('home-discharge', 'prepare')
+        self.assertIn('CHIE -w 00', log)
+        self.assertIn('aldente://limit/100', log)
+        self.assertEqual(state, 'prepare')
+
+    def test_battery_only_discharge_is_not_a_hold(self):
+        self.write_executable('pmset', 'echo " -InternalBattery-0 80%; discharging"')
+        _, log, state = self.tick('home', 'away')
+        self.assertIn('aldente://limit/100', log)
+
     def test_returning_home_ends_manual_hold(self):
         self.set_limits('100', '50')
         _, log, _ = self.tick('away', 'home')

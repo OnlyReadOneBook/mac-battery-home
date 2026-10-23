@@ -25,17 +25,6 @@ set_limit() {
   print -r -- "$1" > "$SET_LIMIT_FILE"
 }
 
-# A limit the user set by hand (AlDente's chargeVal differs from the last value this script wrote)
-# is a manual hold: the script never raises it. The hold ends when the script next writes a limit
-# that matches it (arriving home sets HOME_LIMIT) or when the user sets the last written value back.
-manual_hold() {
-  local wanted current
-  wanted=$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)
-  [[ -z "$wanted" ]] && return 1
-  current=$("$DEFAULTS" read "$ALDENTE_ID" chargeVal 2>/dev/null || true)
-  [[ -n "$current" && "$current" != "$wanted" ]]
-}
-
 # Discharge by cutting the adapter through the SMC CHIE key (08 = adapter off, 00 = on).
 # battery CLI's key detection fails on macOS 27 and AlDente's button is a toggle, but the
 # raw key works through the sudoers entry battery CLI installed.
@@ -50,6 +39,27 @@ start_discharge() {
 }
 stop_discharge() {
   adapter on
+}
+
+# A discharge the user started in AlDente (adapter attached, battery draining, and the CHIE key not
+# cut by this script) is a manual hold too: the script neither raises the limit nor restores power.
+# AlDente on macOS 27 discharges through the native MCL limit, so CHIE stays 00 while it runs.
+manual_discharge() {
+  local batt
+  batt=$(pmset -g batt 2>/dev/null || true)
+  [[ "$batt" == *"AC attached"* && "$batt" == *discharging* ]] || return 1
+  [[ "$(${=SUDO} "$SMC" -k CHIE -r 2>/dev/null || true)" != *"bytes 08"* ]]
+}
+
+# A limit the user set by hand (AlDente's chargeVal differs from the last value this script wrote)
+# is a manual hold: the script never raises it. The hold ends when the script next writes a limit
+# that matches it (arriving home sets HOME_LIMIT) or when the user sets the last written value back.
+manual_hold() {
+  local wanted current
+  wanted=$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)
+  [[ -z "$wanted" ]] && return 1
+  current=$("$DEFAULTS" read "$ALDENTE_ID" chargeVal 2>/dev/null || true)
+  [[ -n "$current" && "$current" != "$wanted" ]]
 }
 
 gw=$(ipconfig getoption en0 router 2>/dev/null || true)
@@ -83,10 +93,13 @@ fi
 pct=$(pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | head -1 | tr -d '%')
 if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
   if [[ "$prev" != "$mode" ]]; then
-    [[ "$prev" == "home-discharge" ]] && stop_discharge
-    if manual_hold; then
+    if manual_discharge; then
+      print -r -- "$(date -Iseconds) manual discharge kept, not charging"
+    elif manual_hold; then
+      [[ "$prev" == "home-discharge" ]] && stop_discharge
       print -r -- "$(date -Iseconds) manual limit kept, not raising to $AWAY_LIMIT"
     else
+      [[ "$prev" == "home-discharge" ]] && stop_discharge
       set_limit "$AWAY_LIMIT"
       if [[ "$mode" == "prepare" ]]; then
         "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
