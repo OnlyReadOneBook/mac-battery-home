@@ -14,12 +14,26 @@ BASE="$HOME/.config/battery-home"
 STATE="$HOME/.battery-home-state"
 ALDENTE_ID="com.apphousekitchen.aldente-pro"
 CAFFEINATE="${CAFFEINATE_CLI:-/usr/bin/caffeinate}"
+DEFAULTS="${DEFAULTS_CLI:-/usr/bin/defaults}"
+SET_LIMIT_FILE="$BASE/set-limit"
 prev=$(cat "$STATE" 2>/dev/null || true)
 
 set_limit() {
   open -g -b "$ALDENTE_ID"
   sleep 3
   open -g "aldente://limit/$1"
+  print -r -- "$1" > "$SET_LIMIT_FILE"
+}
+
+# A limit the user set by hand (AlDente's chargeVal differs from the last value this script wrote)
+# is a manual hold: the script never raises it. The hold ends when the script next writes a limit
+# that matches it (arriving home sets HOME_LIMIT) or when the user sets the last written value back.
+manual_hold() {
+  local wanted current
+  wanted=$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)
+  [[ -z "$wanted" ]] && return 1
+  current=$("$DEFAULTS" read "$ALDENTE_ID" chargeVal 2>/dev/null || true)
+  [[ -n "$current" && "$current" != "$wanted" ]]
 }
 
 # Discharge by cutting the adapter through the SMC CHIE key (08 = adapter off, 00 = on).
@@ -70,9 +84,13 @@ pct=$(pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | head -1 | tr -d '%')
 if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
   if [[ "$prev" != "$mode" ]]; then
     [[ "$prev" == "home-discharge" ]] && stop_discharge
-    set_limit "$AWAY_LIMIT"
-    if [[ "$mode" == "prepare" ]]; then
-      "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
+    if manual_hold; then
+      print -r -- "$(date -Iseconds) manual limit kept, not raising to $AWAY_LIMIT"
+    else
+      set_limit "$AWAY_LIMIT"
+      if [[ "$mode" == "prepare" ]]; then
+        "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
+      fi
     fi
   fi
 elif [[ "$prev" == "home-discharge" ]]; then

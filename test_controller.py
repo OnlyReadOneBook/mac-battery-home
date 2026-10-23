@@ -22,7 +22,9 @@ class TickContract(unittest.TestCase):
         self.write_executable('caffeinate', ':')
         self.write_executable('ipconfig', 'cat "$HOME/gateway"')
         self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; not charging"')
-        self.base.joinpath('config').write_text(f'HOME_GATEWAY="home"\nSUDO_CLI=""\nSMC_CLI="{self.bin / "smc"}"\nCAFFEINATE_CLI="{self.bin / "caffeinate"}"\n')
+        self.write_executable('defaults', 'cat "$HOME/aldente-limit"')
+        self.home.joinpath('aldente-limit').write_text('50')
+        self.base.joinpath('config').write_text(f'HOME_GATEWAY="home"\nSUDO_CLI=""\nSMC_CLI="{self.bin / "smc"}"\nCAFFEINATE_CLI="{self.bin / "caffeinate"}"\nDEFAULTS_CLI="{self.bin / "defaults"}"\n')
         self.base.joinpath('calendar-url').write_text('synthetic')
         self.base.joinpath('venv/bin').mkdir(parents=True)
         p = self.base / 'venv/bin/python'
@@ -82,6 +84,41 @@ class TickContract(unittest.TestCase):
                 _, log, state = self.tick('home-discharge', mode, gateway)
                 self.assertIn('CHIE -w 00', log)
                 self.assertEqual(state, 'home')
+
+    def set_limits(self, written, current):
+        self.base.joinpath('set-limit').write_text(written)
+        self.home.joinpath('aldente-limit').write_text(current)
+
+    def test_manual_limit_is_not_raised(self):
+        self.set_limits('100', '50')
+        for previous, mode in [('prepare', 'away'), ('home', 'prepare'), ('home-discharge', 'prepare')]:
+            with self.subTest(previous=previous, mode=mode):
+                r, log, state = self.tick(previous, mode)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertNotIn('aldente://limit', log)
+                self.assertEqual(state, mode)
+                self.assertIn('manual limit kept', r.stdout)
+        self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '100')
+
+    def test_manual_hold_still_restores_adapter(self):
+        self.set_limits('100', '50')
+        _, log, _ = self.tick('home-discharge', 'away')
+        self.assertIn('CHIE -w 00', log)
+
+    def test_limit_written_by_script_is_raised(self):
+        for written, current in [('100', '100'), ('50', '50'), ('', '50')]:
+            with self.subTest(written=written, current=current):
+                self.set_limits(written, current)
+                _, log, state = self.tick('home', 'prepare')
+                self.assertIn('aldente://limit/100', log)
+                self.assertEqual(state, 'prepare')
+                self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '100')
+
+    def test_returning_home_ends_manual_hold(self):
+        self.set_limits('100', '50')
+        _, log, _ = self.tick('away', 'home')
+        self.assertIn('aldente://limit/50', log)
+        self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '50')
 
     def test_failed_limit_change_retries_next_tick(self):
         self.write_executable('open', 'exit 1')
