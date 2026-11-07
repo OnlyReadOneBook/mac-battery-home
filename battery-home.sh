@@ -8,6 +8,7 @@ HOME_LIMIT=50
 AWAY_LIMIT=100
 COMMUTE_MINUTES=55
 CHARGE_LEAD_MINUTES=180
+OUTING_EXCLUDE_REGEX=""
 [[ -f "$CONFIG" ]] && source "$CONFIG"
 [[ -z "$HOME_GATEWAY" ]] && exit 0
 BASE="$HOME/.config/battery-home"
@@ -80,7 +81,7 @@ if [[ "$location" == "away" ]]; then
 else
   mode="home"
   if [[ -f "$BASE/calendar-url" ]]; then
-    mode=$("$BASE/venv/bin/python" "$HOME/bin/calendar-plan.py" --mode --commute "$COMMUTE_MINUTES" --lead "$CHARGE_LEAD_MINUTES" --completed-date "$completed" || true)
+    mode=$("$BASE/venv/bin/python" "$HOME/bin/calendar-plan.py" --mode --commute "$COMMUTE_MINUTES" --lead "$CHARGE_LEAD_MINUTES" --completed-date "$completed" --exclude "$OUTING_EXCLUDE_REGEX" || true)
     if [[ "$mode" == "unknown" || -z "$mode" ]]; then
       if [[ "$prev" == "home-discharge" ]]; then
         stop_discharge
@@ -105,6 +106,10 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
         "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
       fi
     fi
+  elif [[ "$mode" == "prepare" && -n "$pct" && "$pct" -ge "$AWAY_LIMIT" && "$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)" == "$AWAY_LIMIT" ]]; then
+    # Full: drop the limit back to the home value so the battery is not held at 100% on the adapter.
+    set_limit "$HOME_LIMIT"
+    print -r -- "$(date -Iseconds) charged to $pct%, limit back to $HOME_LIMIT"
   fi
 elif [[ "$prev" == "home-discharge" ]]; then
   if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then

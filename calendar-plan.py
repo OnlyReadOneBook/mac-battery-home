@@ -46,7 +46,7 @@ def read_calendar(now, refresh=False):
     return Calendar.from_ical(cache.read_bytes())
 
 
-def is_outing(event, email=''):
+def is_outing(event, email='', exclude=''):
     if str(event.get('STATUS', '')).upper() == 'CANCELLED':
         return False
     attendees = event.get('ATTENDEE', [])
@@ -59,21 +59,26 @@ def is_outing(event, email=''):
     location = str(event.get('LOCATION', '')).strip()
     if '[충전제외]' in title:
         return False
+    if exclude and re.search(exclude, title):
+        return False
     if '[외출]' in title or '[출발]' in title:
         return True
     if re.search(r'온라인|이러닝|녹강|비대면|마감|제출|환전|LeetCode|Zoom|Google Meet', title, re.I):
         return False
     if re.search(r'온라인|비대면|https?://|zoom|meet\.google', location, re.I):
         return False
-    return bool(re.search(r'\[학교\]|\[수업\]|\[시험\]', title) or (location and location not in ('집', '자택', '온라인', '추후 공지')))
+    if re.search(r'\[학교\]|\[수업\]|\[시험\]', title):
+        return True
+    # A venue written without any Hangul is abroad (a match watched from home); Korean places are in Hangul.
+    return bool(location and location not in ('집', '자택', '온라인', '추후 공지') and re.search(r'[가-힣]', location))
 
 
-def departures(calendar, now, commute=55, lead=180, email=''):
+def departures(calendar, now, commute=55, lead=180, email='', exclude=''):
     midnight = datetime.combine(now.date(), time.min, TZ)
     first = {}
     for event in recurring_ical_events.of(calendar).between(midnight - timedelta(days=1), midnight + timedelta(days=9)):
         start = event.decoded('DTSTART')
-        if not isinstance(start, datetime) or not is_outing(event, email):
+        if not isinstance(start, datetime) or not is_outing(event, email, exclude):
             continue
         start = start.replace(tzinfo=TZ) if start.tzinfo is None else start.astimezone(TZ)
         title = str(event.get('SUMMARY', ''))
@@ -111,12 +116,13 @@ def main():
     ap.add_argument('--commute', type=int, default=55)
     ap.add_argument('--lead', type=int, default=180)
     ap.add_argument('--completed-date', default='')
+    ap.add_argument('--exclude', default='', help='regex; matching titles are never outings')
     args = ap.parse_args()
     now = datetime.now(TZ)
     try:
         calendar = read_calendar(now, args.refresh)
         email = (BASE / 'calendar-owner').read_text().strip() if (BASE / 'calendar-owner').exists() else ''
-        plans = departures(calendar, now, args.commute, args.lead, email)
+        plans = departures(calendar, now, args.commute, args.lead, email, args.exclude)
         next_wake = next((p['charge_start'] for p in plans if datetime.fromisoformat(p['charge_start']) > now), '')
         report = {'updated_at': now.isoformat(), 'mode': choose_mode(plans, now, args.completed_date),
                   'commute_minutes': args.commute, 'charge_lead_minutes': args.lead, 'next_wake': next_wake, 'plans': plans}

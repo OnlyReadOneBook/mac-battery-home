@@ -58,6 +58,15 @@ class DepartureContract(unittest.TestCase):
         self.assertEqual(plan.departures(c, self.now)[0]['departure'], '2026-10-20T08:00:00+09:00')
         self.assertTrue(plan.is_outing(Calendar.from_ical('BEGIN:VEVENT\nSUMMARY:[외출] 친구 약속\nEND:VEVENT')))
 
+    def test_overseas_venue_and_excluded_titles_are_not_outings(self):
+        c = calendar(event('worlds', '2026 LoL 월드 챔피언십 · 8강', extra='LOCATION:Credit Union of Texas Event Center\\, Allen\\, Texas'),
+                     event('match', '[외출] 직관', extra='LOCATION:Allen\\, Texas'),
+                     event('cafe', '스터디', extra='LOCATION:스타벅스 강남역점'))
+        titles = [p['title'] for p in plan.departures(c, self.now)]
+        self.assertEqual(titles, ['[외출] 직관'])
+        self.assertEqual(len(plan.departures(c, self.now, exclude='스터디|챔피언십')), 1)
+        self.assertEqual([p['title'] for p in plan.departures(c, self.now, exclude='직관')], ['스터디'])
+
     def test_first_outing_completed_does_not_prepare_for_second(self):
         results = plan.departures(calendar(event(), event('later', start='20261020T060000Z')), self.now)
         self.assertEqual(plan.choose_mode(results, self.now.replace(hour=6), '2026-10-20'), 'home')

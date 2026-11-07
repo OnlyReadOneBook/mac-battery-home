@@ -144,6 +144,28 @@ class TickContract(unittest.TestCase):
         self.assertIn('aldente://limit/50', log)
         self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '50')
 
+    def test_full_battery_in_charge_window_restores_home_limit(self):
+        self.write_executable('pmset', 'echo " -InternalBattery-0 100%; AC attached; charged"')
+        self.set_limits('100', '100')
+        r, log, state = self.tick('prepare', 'prepare')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('aldente://limit/50', log)
+        self.assertNotIn('CHIE -w', log)
+        self.assertEqual(state, 'prepare')
+        self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '50')
+        _, log, state = self.tick('prepare', 'prepare')
+        self.assertEqual(log, '')
+        self.assertEqual(state, 'prepare')
+        self.home.joinpath('aldente-limit').write_text('50')
+        _, log, state = self.tick('prepare', 'away')
+        self.assertIn('aldente://limit/100', log)
+
+    def test_partial_battery_in_charge_window_keeps_away_limit(self):
+        self.set_limits('100', '100')
+        _, log, state = self.tick('prepare', 'prepare')
+        self.assertEqual(log, '')
+        self.assertEqual(state, 'prepare')
+
     def test_failed_limit_change_retries_next_tick(self):
         self.write_executable('open', 'exit 1')
         r, _, state = self.tick('home', 'prepare')
