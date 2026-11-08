@@ -92,6 +92,18 @@ else
   fi
 fi
 pct=$(pmset -g batt | /usr/bin/grep -Eo '[0-9]+%' | head -1 | tr -d '%')
+# Full in the charge window: the rest of the window is home mode, so the battery drains back to the
+# home limit with the adapter cut instead of sitting at 100% (a lower AlDente limit alone only stops charging).
+FULL_DAY_FILE="$BASE/full-day"
+if [[ "$mode" == "prepare" ]]; then
+  if [[ "$(cat "$FULL_DAY_FILE" 2>/dev/null || true)" == "$day" ]]; then
+    mode="home"
+  elif [[ "$prev" == "prepare" && -n "$pct" && "$pct" -ge "$AWAY_LIMIT" && "$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)" == "$AWAY_LIMIT" ]]; then
+    print -r -- "$day" > "$FULL_DAY_FILE"
+    print -r -- "$(date -Iseconds) charged to $pct%, draining to $HOME_LIMIT"
+    mode="home"
+  fi
+fi
 if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
   if [[ "$prev" != "$mode" ]]; then
     if manual_discharge; then
@@ -106,10 +118,6 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
         "$CAFFEINATE" -s -t "$(( CHARGE_LEAD_MINUTES * 60 ))" >/dev/null 2>&1 &!
       fi
     fi
-  elif [[ "$mode" == "prepare" && -n "$pct" && "$pct" -ge "$AWAY_LIMIT" && "$(cat "$SET_LIMIT_FILE" 2>/dev/null || true)" == "$AWAY_LIMIT" ]]; then
-    # Full: drop the limit back to the home value so the battery is not held at 100% on the adapter.
-    set_limit "$HOME_LIMIT"
-    print -r -- "$(date -Iseconds) charged to $pct%, limit back to $HOME_LIMIT"
   fi
 elif [[ "$prev" == "home-discharge" ]]; then
   if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
