@@ -122,6 +122,12 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
 elif [[ "$prev" == "home-discharge" ]]; then
   if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
     mode="home-discharge"
+    # AlDente rewrites the native charge limit when the battery crosses 80%, which reconnects the
+    # adapter and leaves the battery parked near 79%. Cut it again while the drain is unfinished.
+    if [[ "$(${=SUDO} "$SMC" -k CHIE -r 2>/dev/null || true)" != *"bytes 08"* ]]; then
+      adapter off
+      print -r -- "$(date -Iseconds) adapter came back at $pct%, cut again"
+    fi
   else
     stop_discharge
   fi
