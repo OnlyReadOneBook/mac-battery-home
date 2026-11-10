@@ -67,9 +67,18 @@ class TickContract(unittest.TestCase):
         self.assertEqual(state, 'home-discharge')
 
     def test_discharge_continues_until_limit(self):
+        self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"; echo "  CHIE  [hex_]  (bytes 08)"')
         r, log, state = self.tick('home-discharge', 'home')
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(log, '')
+        self.assertNotIn('CHIE -w', log)
+        self.assertEqual(state, 'home-discharge')
+
+    def test_discharge_cuts_adapter_again_when_it_came_back(self):
+        self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"; echo "  CHIE  [hex_]  (bytes 00)"')
+        r, log, state = self.tick('home-discharge', 'home')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('CHIE -w 08', log)
+        self.assertIn('cut again', r.stdout)
         self.assertEqual(state, 'home-discharge')
 
     def test_discharge_ends_at_limit(self):
@@ -154,8 +163,10 @@ class TickContract(unittest.TestCase):
         self.assertEqual(state, 'home-discharge')
         self.assertEqual(self.base.joinpath('set-limit').read_text().strip(), '50')
         self.home.joinpath('aldente-limit').write_text('50')
+        self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"; echo "  CHIE  [hex_]  (bytes 08)"')
         _, log, state = self.tick('home-discharge', 'prepare')
-        self.assertEqual(log, '')
+        self.assertNotIn('CHIE -w', log)
+        self.assertNotIn('aldente://', log)
         self.assertEqual(state, 'home-discharge')
         _, log, state = self.tick('home-discharge', 'away')
         self.assertIn('CHIE -w 00', log)
