@@ -19,6 +19,7 @@ class TickContract(unittest.TestCase):
         self.write_executable('open', 'echo "open $*" >> "$HOME/commands"')
         self.write_executable('smc', 'echo "smc $*" >> "$HOME/commands"')
         self.write_executable('sleep', ':')
+        self.write_executable('osascript', 'echo "osascript $*" >> "$HOME/commands"')
         self.write_executable('caffeinate', ':')
         self.write_executable('ipconfig', 'cat "$HOME/gateway"')
         self.write_executable('pmset', 'echo " -InternalBattery-0 80%; AC attached; not charging"')
@@ -58,6 +59,8 @@ class TickContract(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('aldente://limit/50', log)
         self.assertIn('CHIE -w 08', log)
+        self.assertLess(log.index('aldente://limit/50'), log.index('to quit'))
+        self.assertLess(log.index('to quit'), log.index('CHIE -w 08'))
         self.assertEqual(state, 'home-discharge')
 
     def test_return_home_cuts_adapter(self):
@@ -78,6 +81,7 @@ class TickContract(unittest.TestCase):
         r, log, state = self.tick('home-discharge', 'home')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('CHIE -w 08', log)
+        self.assertIn('to quit', log)
         self.assertIn('cut again', r.stdout)
         self.assertEqual(state, 'home-discharge')
 
@@ -85,6 +89,7 @@ class TickContract(unittest.TestCase):
         self.write_executable('pmset', 'echo " -InternalBattery-0 50%; discharging"')
         _, log, state = self.tick('home-discharge', 'home')
         self.assertIn('CHIE -w 00', log)
+        self.assertLess(log.index('open -g -b com.apphousekitchen.aldente-pro'), log.index('CHIE -w 00'))
         self.assertEqual(state, 'home')
 
     def test_lost_gateway_or_expired_calendar_restores_power(self):

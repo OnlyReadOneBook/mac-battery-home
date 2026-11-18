@@ -34,11 +34,21 @@ SUDO="${SUDO_CLI-sudo -n}"
 adapter() {
   if [[ "$1" == off ]]; then ${=SUDO} "$SMC" -k CHIE -w 08; else ${=SUDO} "$SMC" -k CHIE -w 00; fi
 }
+# AlDente rewrites the charge state on every 1% step below 80%, which resets CHIE to 00 and puts the
+# adapter back for up to a tick. With AlDente quit the key stays at 08, so the drain runs without it
+# and it comes back (restoring its saved limit) just before the adapter does.
+quit_aldente() {
+  osascript -e "if application id \"$ALDENTE_ID\" is running then tell application id \"$ALDENTE_ID\" to quit" >/dev/null 2>&1 || true
+}
 start_discharge() {
   set_limit "$HOME_LIMIT"
+  sleep 2
+  quit_aldente
   adapter off
 }
 stop_discharge() {
+  open -g -b "$ALDENTE_ID"
+  sleep 3
   adapter on
 }
 
@@ -122,9 +132,10 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
 elif [[ "$prev" == "home-discharge" ]]; then
   if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
     mode="home-discharge"
-    # AlDente rewrites the native charge limit when the battery crosses 80%, which reconnects the
-    # adapter and leaves the battery parked near 79%. Cut it again while the drain is unfinished.
+    # The adapter is back while the drain is unfinished: AlDente is running again (relaunched by the
+    # user or at login) and reset the key. Quit it and cut again.
     if [[ "$(${=SUDO} "$SMC" -k CHIE -r 2>/dev/null || true)" != *"bytes 08"* ]]; then
+      quit_aldente
       adapter off
       print -r -- "$(date -Iseconds) adapter came back at $pct%, cut again"
     fi
