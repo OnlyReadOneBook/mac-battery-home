@@ -130,7 +130,11 @@ if [[ "$mode" == "prepare" || "$mode" == "away" ]]; then
     fi
   fi
 elif [[ "$prev" == "home-discharge" ]]; then
-  if [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
+  if manual_hold; then
+    # The user raised the limit in AlDente to charge on purpose: stop the drain and leave it alone.
+    stop_discharge
+    print -r -- "$(date -Iseconds) manual limit set during drain, charging allowed"
+  elif [[ -z "$pct" || "$pct" -gt "$HOME_LIMIT" ]]; then
     mode="home-discharge"
     # The adapter is back while the drain is unfinished: AlDente is running again (relaunched by the
     # user or at login) and reset the key. Quit it and cut again.

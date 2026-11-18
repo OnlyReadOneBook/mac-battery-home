@@ -85,6 +85,19 @@ class TickContract(unittest.TestCase):
         self.assertIn('cut again', r.stdout)
         self.assertEqual(state, 'home-discharge')
 
+    def test_manual_limit_during_discharge_stops_drain(self):
+        self.base.joinpath('set-limit').write_text('50')
+        self.home.joinpath('aldente-limit').write_text('100')
+        r, log, state = self.tick('home-discharge', 'home')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('CHIE -w 00', log)
+        self.assertNotIn('CHIE -w 08', log)
+        self.assertNotIn('to quit', log)
+        self.assertEqual(state, 'home')
+        _, log, state = self.tick('home', 'home')
+        self.assertNotIn('CHIE -w', log)
+        self.assertEqual(state, 'home')
+
     def test_discharge_ends_at_limit(self):
         self.write_executable('pmset', 'echo " -InternalBattery-0 50%; discharging"')
         _, log, state = self.tick('home-discharge', 'home')
